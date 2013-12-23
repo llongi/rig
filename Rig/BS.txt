@@ -1,0 +1,76 @@
+PROJECT_NAME(Rig)
+PROJECT_VERSION(0.4.5-SVN) // support SVN rev numbers
+PROJECT_TYPE(C99) // Can be C89, C99, C1X, C++98, C++0X
+
+SWITCH(TESTS_SUPPORT BOOL OFF)
+SWITCH(STACK_ITERATOR BOOL ON)
+SWITCH(QUEUE_ITERATOR BOOL ON)
+SWITCH(STACK_SMR_TYPE INT 1 [i < 3])
+SWITCH(QUEUE_SMR_TYPE INT 1 [i < 3])
+SWITCH(LIST_SMR_TYPE INT 2 [i < 3])
+
+// SWITCH(ASD BOOL ON)
+// SWITCH(DFG INT 2 [integer constraints])
+// SWITCH(GHJ DOUBLE 2.22 [double constraints])
+// SWITCH(JKL STRING "default" [length constraints] [reg-exp constraints])
+
+INCLUDE(Doxygen)
+DOXYGEN(Doxyfile.in)
+
+// Included modules with only one function requiring no arguments get automatically executed
+INCLUDE(CheckEndianness) // defines SYSTEM_BIG_ENDIAN / SYSTEM_LITTLE_ENDIAN
+
+INCLUDE(CheckIncludeFile)
+CHECK_INCLUDE_FILE(STDC) // place-holder for std*.h headers
+CHECK_INCLUDE_FILE(errno.h) // generate HAVE_ERRNO_H
+
+INCLUDE(CheckTypeSize)
+CHECK_TYPE_SIZE("short int") // check size and generate SIZEOF_SHORT_INT
+CHECK_TYPE_SIZE("int")
+CHECK_TYPE_SIZE("long int")
+CHECK_TYPE_SIZE("long long int")
+CHECK_TYPE_SIZE("size_t")
+CHECK_TYPE_SIZE("void *")
+
+IF(SIZEOF_VOID_PTR != SIZEOF_SIZE_T)
+	PRINT(ERROR "Size of void * and size_t must be the same!")
+FI()
+
+INCLUDE(CheckFunctionExists)
+CHECK_FUNCTION_EXISTS("int posix_memalign(void **, size_t, size_t)" stdlib.h) // check function exists in specified header, HAVE_POSIX_MEMALIGN generated
+CHECK_FUNCTION_EXISTS("void * _aligned_malloc(size_t, size_t)" malloc.h) // optionally can pass library as third argument, w/o libc is assumed
+CHECK_FUNCTION_EXISTS("int sched_yield(void)" sched.h) // multiple functions with the same name can be checked, of course with different signatures, the first confirmed
+// one wins. HAVE_FUNNAME_X, with X from 1 to N for every supplementary check, so you can differ between them easily.
+
+INCLUDE(CheckLibrary)
+CHECK_LIBRARY(jpeg libjpeg.h) // header can be omitted, defaults to <libname>.h then, library must have a valid header file
+// defines HAVE_JPEG_LIB, as well as JPEG_LIB_VERSION = pkg-config if found, either .so-version
+
+INCLUDE(FindPackage)
+FIND_PACKAGE(Threads) // used for complex libraries, having multiple providers or significantly differing across OSes
+// defines HAVE_<pkgname>, as well as <pkgname>_<type> to identify the provider or systems available, and
+// HAVE_<pkgname> has the corresponding value set, for use like below
+
+IF(HAVE_THREADS == THREADS_PTHREADS)
+	// Check specific include files
+	CHECK_INCLUDE_FILE(sched.h)
+	CHECK_INCLUDE_FILE(unistd.h)
+
+	// pthread_rwlock_t support
+	ADD_DEFINITION(-D_XOPEN_SOURCE=600)
+
+	// syscall() support
+	ADD_DEFINITION(-D_BSD_SOURCE)
+FI()
+
+ADD_INCLUDES(include)
+
+// Subdirectories
+ADD_SUBDIRECTORY(include)
+ADD_SUBDIRECTORY(src)
+
+IF(RIG_TESTS_SUPPORT)
+	// Enable test runs
+	ENABLE_TESTS()
+	ADD_SUBDIRECTORY(tests)
+FI()

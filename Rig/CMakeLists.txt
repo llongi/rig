@@ -1,0 +1,126 @@
+# Init CMake (require at least version 2.6)
+CMAKE_MINIMUM_REQUIRED(VERSION 2.6)
+SET(CMAKE_MODULE_PATH ${CMAKE_SOURCE_DIR}/cmake/ ${CMAKE_MODULE_PATH})
+
+# General build settings
+IF (NOT CMAKE_BUILD_TYPE)
+	SET(CMAKE_BUILD_TYPE "Release" CACHE STRING "Possible build types: None Debug Release RelWithDebInfo MinSizeRel")
+ENDIF()
+
+IF (NOT RIG_TESTS_SUPPORT)
+	SET(RIG_TESTS_SUPPORT 0 CACHE BOOL "Compile unit-tests to run them later")
+ENDIF()
+
+IF (NOT RIG_STACK_PRECISE_ITERATOR)
+	SET(RIG_STACK_PRECISE_ITERATOR 1 CACHE BOOL "Enable precise iterator support for RIG_STACK")
+ENDIF()
+
+IF (NOT RIG_QUEUE_PRECISE_ITERATOR)
+	SET(RIG_QUEUE_PRECISE_ITERATOR 1 CACHE BOOL "Enable precise iterator support for RIG_QUEUE")
+ENDIF()
+
+IF (NOT RIG_STACK_SMR_TYPE)
+	SET(RIG_STACK_SMR_TYPE 1)
+ENDIF()
+
+IF (NOT RIG_QUEUE_SMR_TYPE)
+	SET(RIG_QUEUE_SMR_TYPE 1)
+ENDIF()
+
+IF (NOT RIG_LIST_SMR_TYPE)
+	SET(RIG_LIST_SMR_TYPE 1)
+ENDIF()
+
+# Project name and version
+PROJECT(Rig C)
+SET(PROJECT_VERSION_MAJOR 0)
+SET(PROJECT_VERSION_MINOR 4)
+SET(PROJECT_VERSION_PATCH 5)
+SET(PROJECT_VERSION_NOREV ${PROJECT_VERSION_MAJOR}.${PROJECT_VERSION_MINOR}.${PROJECT_VERSION_PATCH})
+IF (NOT PROJECT_REVISION)
+	EXECUTE_PROCESS(COMMAND svnversion OUTPUT_VARIABLE PROJECT_REVISION OUTPUT_STRIP_TRAILING_WHITESPACE)
+ENDIF()
+SET(PROJECT_VERSION ${PROJECT_VERSION_NOREV}-r${PROJECT_REVISION})
+
+# Set compiler info
+SET(GNUCC ${CMAKE_COMPILER_IS_GNUCC})
+
+# Test if we are on a big-endian architecture
+INCLUDE(TestBigEndian)
+TEST_BIG_ENDIAN(SYSTEM_BIGENDIAN)
+
+# C99 standard needed
+IF (GNUCC)
+	SET(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -std=c99")
+ENDIF()
+
+# Check include files availability
+INCLUDE(CheckIncludeFiles)
+CHECK_INCLUDE_FILES(stdbool.h HAVE_STDBOOL_H)
+CHECK_INCLUDE_FILES(stdlib.h  HAVE_STDLIB_H)
+CHECK_INCLUDE_FILES(stdint.h  HAVE_STDINT_H)
+CHECK_INCLUDE_FILES(stdarg.h  HAVE_STDARG_H)
+CHECK_INCLUDE_FILES(errno.h   HAVE_ERRNO_H)
+
+# Check size of various types
+INCLUDE(CheckTypeSize)
+CHECK_TYPE_SIZE("short int"     SIZEOF_SHORT_INT)
+CHECK_TYPE_SIZE("int"           SIZEOF_INT)
+CHECK_TYPE_SIZE("long int"      SIZEOF_LONG_INT)
+CHECK_TYPE_SIZE("long long int" SIZEOF_LONG_LONG_INT)
+CHECK_TYPE_SIZE("size_t"        SIZEOF_SIZE_T)
+CHECK_TYPE_SIZE("void *"        SIZEOF_VOID_PTR)
+
+IF (NOT "${SIZEOF_VOID_PTR}" STREQUAL "${SIZEOF_SIZE_T}")
+	MESSAGE(SEND_ERROR "Size of void * and size_t must be the same!")
+ENDIF()
+
+# Check for existence of functions
+INCLUDE(CheckFunctionExists)
+CHECK_FUNCTION_EXISTS(posix_memalign HAVE_POSIX_MEMALIGN)
+CHECK_FUNCTION_EXISTS(_aligned_malloc HAVE_ALIGNED_MALLOC)
+CHECK_FUNCTION_EXISTS(sched_yield HAVE_SCHED_YIELD)
+
+# Check threads support
+FIND_PACKAGE(Threads)
+SET(HAVE_PTHREADS ${CMAKE_USE_PTHREADS_INIT})
+SET(HAVE_WIN32_THREADS ${CMAKE_USE_WIN32_THREADS_INIT})
+
+IF (HAVE_PTHREADS)
+	# Check specific include files
+	CHECK_INCLUDE_FILES(sched.h  HAVE_SCHED_H)
+	CHECK_INCLUDE_FILES(unistd.h HAVE_UNISTD_H)
+
+	# pthread_rwlock_t support
+	ADD_DEFINITIONS(-D_XOPEN_SOURCE=600)
+
+	# syscall() support
+	ADD_DEFINITIONS(-D_BSD_SOURCE)
+ENDIF()
+
+# Enable all warnings for GCC
+IF (GNUCC)
+	SET(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -pedantic -Wall -Wextra")
+	SET(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wunused-parameter -Wformat=2 -Winit-self -Wundef")
+	SET(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wpointer-arith -Wcast-qual -Wcast-align -Wwrite-strings")
+	SET(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wstrict-prototypes -Wmissing-prototypes -Wredundant-decls")
+	SET(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wshadow -Wbad-function-cast -Wfloat-equal")
+	SET(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wconversion -Wunused")
+ENDIF()
+
+# Generate config files
+CONFIGURE_FILE(${CMAKE_SOURCE_DIR}/include/rig_config_in.h ${CMAKE_SOURCE_DIR}/include/rig_config.h @ONLY)
+CONFIGURE_FILE(${CMAKE_SOURCE_DIR}/include/rig_in.h ${CMAKE_SOURCE_DIR}/include/rig.h @ONLY)
+
+# Include handling
+INCLUDE_DIRECTORIES(${CMAKE_SOURCE_DIR}/include/)
+
+# Subdirectories
+ADD_SUBDIRECTORY(include)
+ADD_SUBDIRECTORY(src)
+
+IF (RIG_TESTS_SUPPORT)
+	# Enable test runs
+	ENABLE_TESTING()
+	ADD_SUBDIRECTORY(tests)
+ENDIF()

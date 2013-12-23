@@ -1,0 +1,17 @@
+SET(rigSources
+	rig_counter.c
+	rig_hash.c
+	rig_list.c
+	rig_mem.c
+	rig_misc.c
+	rig_queue.c
+	rig_smr_epoch.c
+	rig_smr_hp.c
+	rig_stack.c
+	rig_threads.c)
+
+ADD_LIBRARY(rig SHARED ${rigSources})
+
+TARGET_LINK_LIBRARIES(rig ${THREAD_LIBS})
+
+INSTALL(TARGETS rig DESTINATION lib)

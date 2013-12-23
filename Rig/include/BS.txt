@@ -1,0 +1,4 @@
+GENERATE_FILE(rig_config_in.h rig_config.h)
+GENERATE_FILE(rig_in.h rig.h)
+
+INSTALL(FILES rig.h DESTINATION include)

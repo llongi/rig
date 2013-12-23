@@ -1,0 +1,1 @@
+INSTALL(FILES rig.h DESTINATION include)

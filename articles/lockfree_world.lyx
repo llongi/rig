@@ -1,0 +1,769 @@
+#LyX 1.6.5 created this file. For more info see http://www.lyx.org/
+\lyxformat 345
+\begin_document
+\begin_header
+\textclass article
+\use_default_options true
+\language english
+\inputencoding auto
+\font_roman default
+\font_sans default
+\font_typewriter default
+\font_default_family default
+\font_sc false
+\font_osf false
+\font_sf_scale 100
+\font_tt_scale 100
+
+\graphics default
+\paperfontsize default
+\spacing single
+\use_hyperref false
+\papersize a4paper
+\use_geometry false
+\use_amsmath 1
+\use_esint 1
+\cite_engine basic
+\use_bibtopic false
+\paperorientation portrait
+\secnumdepth 3
+\tocdepth 3
+\paragraph_separation indent
+\defskip medskip
+\quotes_language english
+\papercolumns 1
+\papersides 1
+\paperpagestyle default
+\tracking_changes false
+\output_changes false
+\author "" 
+\author "" 
+\end_header
+
+\begin_body
+
+\begin_layout Title
+A Lock-Free World, part 1: an introduction
+\end_layout
+
+\begin_layout Standard
+Welcome to the first installment of "A Lock-Free World"; I've been researching
+ lock-free solutions to common algorithms such as lists, sets, queues, stacks
+ and hash-tables, both because I find the argument fascinating and because
+ I need actual, working code for a library I'm writing.
+\end_layout
+
+\begin_layout Standard
+While lock-free algorithms clearly offer significant advantages over they
+ lock-holding counterparts, such as better performance under contention,
+ they are still relatively rare in the wild, while they are being used in
+ some specialized software, such as OS kernels, there are few, if any, general
+ purpose libraries that one could just include in their project and use
+ freely, especially if you want something that's pure C(-99 compliant) code
+ (there are some more for Java especially, and C++).
+ I mostly attribute this to the actual fact that lock-free algorithms are
+ still subject to academic study, they are relatively "new", and often seem
+ to have found the path from a paper to real, compilable code, only on the
+ author's workstation, and maybe in some company's labs.
+ Also, those algorithms are kinda hard to reason about sometimes, and it
+ often gets quite complicated if you want to prove their correctness.
+ Most of the literature also only concentrates on having working implementations
+ in Java, which makes the whole thing slightly simpler, as a working garbage
+ collector appropriately solves (or hides) some of the more complicated
+ issues we'll be encountering later on, or only pseudo-code is presented,
+ which often cannot readily be translated into something usefull.
+ As my focus is C99, memory management still needs to be done 100% manually
+ (and carefully!).
+\end_layout
+
+\begin_layout Standard
+At the core of most implementations of lock-free algorithms we find the
+ CAS instruction: CAS, standing for Compare-And-Swap, takes three arguments:
+ a memory address, where a value is stored, an expected value, and a new
+ value; it works by comparing the value stored at the given address with
+ the supplied expected value, if they are the same, the value gets exchanged
+ for the new value and the old value is returned, else, the old value is
+ returned and nothing else happens; you'd express this in code as 
+\begin_inset listings
+inline false
+status open
+
+\begin_layout Plain Layout
+
+int CAS(int *addr, int exp_val, int new_val) {
+\end_layout
+
+\begin_layout Plain Layout
+
+	int old_val = *addr;
+\end_layout
+
+\begin_layout Plain Layout
+
+	if (old_val == exp_val) {
+\end_layout
+
+\begin_layout Plain Layout
+
+		*addr = new_val;
+\end_layout
+
+\begin_layout Plain Layout
+
+	}
+\end_layout
+
+\begin_layout Plain Layout
+
+	return (old_val);
+\end_layout
+
+\begin_layout Plain Layout
+
+}
+\end_layout
+
+\end_inset
+
+ but the whole operation gets executed atomically, meaning nothing else
+ can interfere with it.
+\end_layout
+
+\begin_layout Standard
+CAS plus atomic reads and writes give us the fundamental building blocks
+ for lock-free algorithms.
+ All major modern processor architectures offer atomic reads and writes
+ on objects of alignement and size equal to the machine size, meaning 32bit
+ processors usually support them on objects such as 32bit integers and pointers
+ aligned on a 4 byte boundary, and 64bit processors on 64bit integers and
+ pointers aligned on an 8 byte boundary.
+ Different processor architectures may relax those requirements depending
+ on their specifications, but I'm not aware of any that actually demand
+ tighter conditions than the above, at least not in the last 15 or so years,
+ going further back than that, I remember reading about the existance of
+ such oddities, such as 16bit CPUs with only an 8bit memory bus not being
+ able to read/write 16bit integers atomically (that would obviously need
+ two operations over the memory bus, but I can't rememeber where I read
+ about it, if anyone has substantial facts, please come forward!).
+ On x86 and x86_64 for example, reads and writes are always atomic, and
+ CAS is directly available, as well as other atomic instructions that make
+ the life of the programmer easier, such as an atomic increment and decrement,
+ though those could all be emulated using just CAS, for example to emulate
+ increment: 
+\begin_inset listings
+inline false
+status open
+
+\begin_layout Plain Layout
+
+do {
+\end_layout
+
+\begin_layout Plain Layout
+
+	int val = to_incr;
+\end_layout
+
+\begin_layout Plain Layout
+
+}
+\end_layout
+
+\begin_layout Plain Layout
+
+while (CAS(&to_incr, val, val + 1) != val);
+\end_layout
+
+\end_inset
+
+
+\end_layout
+
+\begin_layout Standard
+Other architectures may provide special instructions for atomic reads and
+ writes, or not directly provide CAS, but something similar such as LL/SC
+ (LoadLinked/StoreConditional), which can then be used to easily implement
+ the CAS semantics and other functions such as atomic add or atomic swap
+ as needed, see the following table for a quick overview.
+\end_layout
+
+\begin_layout Standard
+\begin_inset Tabular
+<lyxtabular version="3" rows="10" columns="3">
+<features islongtable="true">
+<column alignment="center" valignment="top" width="0">
+<column alignment="center" valignment="top" width="0">
+<column alignment="center" valignment="top" width="0">
+<row>
+<cell alignment="center" valignment="top" topline="true" bottomline="true" leftline="true" usebox="none">
+\begin_inset Text
+
+\begin_layout Plain Layout
+Architecture
+\end_layout
+
+\end_inset
+</cell>
+<cell alignment="center" valignment="top" topline="true" bottomline="true" leftline="true" usebox="none">
+\begin_inset Text
+
+\begin_layout Plain Layout
+CAS supported
+\end_layout
+
+\end_inset
+</cell>
+<cell alignment="center" valignment="top" topline="true" bottomline="true" leftline="true" rightline="true" usebox="none">
+\begin_inset Text
+
+\begin_layout Plain Layout
+Miscellaneous
+\end_layout
+
+\end_inset
+</cell>
+</row>
+<row>
+<cell alignment="center" valignment="top" topline="true" leftline="true" usebox="none">
+\begin_inset Text
+
+\begin_layout Plain Layout
+x86
+\end_layout
+
+\end_inset
+</cell>
+<cell alignment="center" valignment="top" topline="true" leftline="true" usebox="none">
+\begin_inset Text
+
+\begin_layout Plain Layout
+Yes
+\end_layout
+
+\end_inset
+</cell>
+<cell alignment="center" valignment="top" topline="true" leftline="true" rightline="true" usebox="none">
+\begin_inset Text
+
+\begin_layout Plain Layout
+also atomic add, inc, dec, swap
+\end_layout
+
+\end_inset
+</cell>
+</row>
+<row>
+<cell alignment="center" valignment="top" topline="true" leftline="true" usebox="none">
+\begin_inset Text
+
+\begin_layout Plain Layout
+x86_64
+\end_layout
+
+\end_inset
+</cell>
+<cell alignment="center" valignment="top" topline="true" leftline="true" usebox="none">
+\begin_inset Text
+
+\begin_layout Plain Layout
+Yes
+\end_layout
+
+\end_inset
+</cell>
+<cell alignment="center" valignment="top" topline="true" leftline="true" rightline="true" usebox="none">
+\begin_inset Text
+
+\begin_layout Plain Layout
+also atomic add, inc, dec, swap
+\end_layout
+
+\end_inset
+</cell>
+</row>
+<row>
+<cell alignment="center" valignment="top" topline="true" leftline="true" usebox="none">
+\begin_inset Text
+
+\begin_layout Plain Layout
+IA64
+\end_layout
+
+\end_inset
+</cell>
+<cell alignment="center" valignment="top" topline="true" leftline="true" usebox="none">
+\begin_inset Text
+
+\begin_layout Plain Layout
+Yes
+\end_layout
+
+\end_inset
+</cell>
+<cell alignment="center" valignment="top" topline="true" leftline="true" rightline="true" usebox="none">
+\begin_inset Text
+
+\begin_layout Plain Layout
+
+\end_layout
+
+\end_inset
+</cell>
+</row>
+<row>
+<cell alignment="center" valignment="top" topline="true" leftline="true" usebox="none">
+\begin_inset Text
+
+\begin_layout Plain Layout
+SPARC
+\end_layout
+
+\end_inset
+</cell>
+<cell alignment="center" valignment="top" topline="true" leftline="true" usebox="none">
+\begin_inset Text
+
+\begin_layout Plain Layout
+Yes
+\end_layout
+
+\end_inset
+</cell>
+<cell alignment="center" valignment="top" topline="true" leftline="true" rightline="true" usebox="none">
+\begin_inset Text
+
+\begin_layout Plain Layout
+at least on SPARCv9
+\end_layout
+
+\end_inset
+</cell>
+</row>
+<row>
+<cell alignment="center" valignment="top" topline="true" leftline="true" usebox="none">
+\begin_inset Text
+
+\begin_layout Plain Layout
+PowerPC
+\end_layout
+
+\end_inset
+</cell>
+<cell alignment="center" valignment="top" topline="true" leftline="true" usebox="none">
+\begin_inset Text
+
+\begin_layout Plain Layout
+LL/SC
+\end_layout
+
+\end_inset
+</cell>
+<cell alignment="center" valignment="top" topline="true" leftline="true" rightline="true" usebox="none">
+\begin_inset Text
+
+\begin_layout Plain Layout
+
+\end_layout
+
+\end_inset
+</cell>
+</row>
+<row>
+<cell alignment="center" valignment="top" topline="true" leftline="true" usebox="none">
+\begin_inset Text
+
+\begin_layout Plain Layout
+ARM
+\end_layout
+
+\end_inset
+</cell>
+<cell alignment="center" valignment="top" topline="true" leftline="true" usebox="none">
+\begin_inset Text
+
+\begin_layout Plain Layout
+LL/SC
+\end_layout
+
+\end_inset
+</cell>
+<cell alignment="center" valignment="top" topline="true" leftline="true" rightline="true" usebox="none">
+\begin_inset Text
+
+\begin_layout Plain Layout
+at least on v6 and newer
+\end_layout
+
+\end_inset
+</cell>
+</row>
+<row>
+<cell alignment="center" valignment="top" topline="true" leftline="true" usebox="none">
+\begin_inset Text
+
+\begin_layout Plain Layout
+MIPS
+\end_layout
+
+\end_inset
+</cell>
+<cell alignment="center" valignment="top" topline="true" leftline="true" usebox="none">
+\begin_inset Text
+
+\begin_layout Plain Layout
+LL/SC
+\end_layout
+
+\end_inset
+</cell>
+<cell alignment="center" valignment="top" topline="true" leftline="true" rightline="true" usebox="none">
+\begin_inset Text
+
+\begin_layout Plain Layout
+
+\end_layout
+
+\end_inset
+</cell>
+</row>
+<row>
+<cell alignment="center" valignment="top" topline="true" leftline="true" usebox="none">
+\begin_inset Text
+
+\begin_layout Plain Layout
+Alpha
+\end_layout
+
+\end_inset
+</cell>
+<cell alignment="center" valignment="top" topline="true" leftline="true" usebox="none">
+\begin_inset Text
+
+\begin_layout Plain Layout
+LL/SC
+\end_layout
+
+\end_inset
+</cell>
+<cell alignment="center" valignment="top" topline="true" leftline="true" rightline="true" usebox="none">
+\begin_inset Text
+
+\begin_layout Plain Layout
+
+\end_layout
+
+\end_inset
+</cell>
+</row>
+<row>
+<cell alignment="center" valignment="top" topline="true" bottomline="true" leftline="true" usebox="none">
+\begin_inset Text
+
+\begin_layout Plain Layout
+HPPA
+\end_layout
+
+\end_inset
+</cell>
+<cell alignment="center" valignment="top" topline="true" bottomline="true" leftline="true" usebox="none">
+\begin_inset Text
+
+\begin_layout Plain Layout
+No
+\end_layout
+
+\end_inset
+</cell>
+<cell alignment="center" valignment="top" topline="true" bottomline="true" leftline="true" rightline="true" usebox="none">
+\begin_inset Text
+
+\begin_layout Plain Layout
+can be emulated using LWS
+\end_layout
+
+\end_inset
+</cell>
+</row>
+</lyxtabular>
+
+\end_inset
+
+
+\end_layout
+
+\begin_layout Standard
+I'll conclude this introduction to the lock-free world and its building
+ blocks by mentioning a few interesting resources for the avid reader:
+\end_layout
+
+\begin_layout Standard
+- "
+\begin_inset CommandInset href
+LatexCommand href
+name "The Art of Multiprocessor Programming"
+target "http://www.amazon.com/Art-Multiprocessor-Programming-Maurice-Herlihy/dp/0123705916/"
+
+\end_inset
+
+, by Maurice Herlihy and Nir Shavit, 2008 (1st Edition)" is THE reference
+ work for this field, being a very comprehensive book, progressing thorough
+ all levels of parallel programming issues, from spin-locks and lock-based
+ algorithms to lock-free ones, it's pretty much the only book I've seen
+ on the argument that also presents lock-free solutions, and it's a must
+ for people wanting to expand their knowledge in the area; all its practical
+ code is Java though, which makes some solutions and algorithms impractical
+ for a non-GC environment (also be aware the first edition contains a few
+ errors, especially in the presented code, you may find the book's errata
+ 
+\begin_inset CommandInset href
+LatexCommand href
+name "here"
+target "http://www.elsevierdirect.com/companion.jsp?ISBN=9780123705914"
+
+\end_inset
+
+)
+\end_layout
+
+\begin_layout Standard
+- Maurice Herlihy's publications: 
+\begin_inset Flex URL
+status collapsed
+
+\begin_layout Plain Layout
+
+http://www.cs.brown.edu/people/mph/publications.html
+\end_layout
+
+\end_inset
+
+
+\end_layout
+
+\begin_layout Standard
+- Nir Shavit's publications: 
+\begin_inset Flex URL
+status collapsed
+
+\begin_layout Plain Layout
+
+http://www.cs.tau.ac.il/~shanir/nir-pubs-web/Nir_Publications.htm
+\end_layout
+
+\end_inset
+
+
+\end_layout
+
+\begin_layout Standard
+- Maged Michael's publications: 
+\begin_inset Flex URL
+status collapsed
+
+\begin_layout Plain Layout
+
+http://www.research.ibm.com/people/m/michael/pubs.htm
+\end_layout
+
+\end_inset
+
+
+\end_layout
+
+\begin_layout Standard
+- Bob Jenkins's reflections: 
+\begin_inset Flex URL
+status collapsed
+
+\begin_layout Plain Layout
+
+http://burtleburtle.net/bob/hash/lockfree.html
+\end_layout
+
+\end_inset
+
+
+\end_layout
+
+\begin_layout Standard
+- Non-blocking synchronization at Wikipedia: 
+\begin_inset Flex URL
+status collapsed
+
+\begin_layout Plain Layout
+
+http://en.wikipedia.org/wiki/Non-blocking_synchronization
+\end_layout
+
+\end_inset
+
+
+\end_layout
+
+\begin_layout Standard
+We'll start looking at implementing a set using a linked list in the next
+ installment of this series, as it is both a fundamental algorithm in computer
+ science, and perfectly shows all the complexities arising from a lock-free
+ approach, and solutions to them.
+\end_layout
+
+\begin_layout Title
+A Lock-Free World, part 2a: a set implementation using linked lists
+\end_layout
+
+\begin_layout Standard
+Ok, quick review: a set is a collection of elements and supports at least
+ insertion, removal and checking for an element.
+\end_layout
+
+\begin_layout Standard
+We'll start with a lock-based implementation to define the interface and
+ what we want to do, as well as having the possibility to later compare
+ the lock-free implementation to this one.
+\end_layout
+
+\begin_layout Standard
+The minimal interface, remembering that we need also functions to create
+ and destroy the data structure, because of explicit memory management,
+ would be as follows:
+\end_layout
+
+\begin_layout Standard
+\begin_inset listings
+inline false
+status open
+
+\begin_layout Plain Layout
+
+SET set_init(void);
+\end_layout
+
+\begin_layout Plain Layout
+
+bool set_destroy(SET *s);
+\end_layout
+
+\begin_layout Plain Layout
+
+bool set_insert(SET s, uintptr_t item);
+\end_layout
+
+\begin_layout Plain Layout
+
+bool set_remove(SET s, uintptr_t item);
+\end_layout
+
+\begin_layout Plain Layout
+
+bool set_contains(SET s, uintptr_t item);
+\end_layout
+
+\begin_layout Plain Layout
+
+bool set_pop(SET s, uintptr_t *item);
+\end_layout
+
+\end_inset
+
+
+\end_layout
+
+\begin_layout Standard
+SET is a pointer to a struct representing the data structure, containing
+ only the pointer to the first node in the linked list and a global lock,
+ the nodes are a simple struct containing the element itself and the pointer
+ to the next node.
+\end_layout
+
+\begin_layout Standard
+\begin_inset listings
+inline false
+status open
+
+\begin_layout Plain Layout
+
+typedef struct SetStruct *SET;
+\end_layout
+
+\begin_layout Plain Layout
+
+typedef struct NodeStruct *Node;
+\end_layout
+
+\begin_layout Plain Layout
+
+\end_layout
+
+\begin_layout Plain Layout
+
+struct SetStruct {
+\end_layout
+
+\begin_layout Plain Layout
+
+	Node head;
+\end_layout
+
+\begin_layout Plain Layout
+
+	pthread_mutex_t mxlock;
+\end_layout
+
+\begin_layout Plain Layout
+
+};
+\end_layout
+
+\begin_layout Plain Layout
+
+\end_layout
+
+\begin_layout Plain Layout
+
+struct NodeStruct {
+\end_layout
+
+\begin_layout Plain Layout
+
+	uintptr_t item;
+\end_layout
+
+\begin_layout Plain Layout
+
+	Node next;
+\end_layout
+
+\begin_layout Plain Layout
+
+};
+\end_layout
+
+\end_inset
+
+
+\end_layout
+
+\begin_layout Standard
+The various lock-based functions would be implemented as follows:
+\end_layout
+
+\begin_layout Standard
+\begin_inset listings
+inline false
+status open
+
+\begin_layout Plain Layout
+
+\end_layout
+
+\begin_layout Plain Layout
+
+\end_layout
+
+\end_inset
+
+
+\end_layout
+
+\end_body
+\end_document

@@ -1,0 +1,26 @@
+#!/bin/bash
+
+# Categories and Properties
+#cut -d';' -f 1,3,5 data/UnicodeData.txt | sed -e "s|.*;$||g" | sort -u | gawk -F';' '{ print $1, $2, $3 }' > cats_props.propmap
+
+# Normal Casing
+cut -d';' -f 1,13 data/UnicodeData.txt | sed -e "s|.*;$||g" | sed -e 's/\([0-9A-F]\{5,8\}\)/R\1/g' | sort -u | sed -e "s|R||g" | gawk -F';' '$1 != $2 { print $1, $2 }' > lower_upper_normal.unimap
+cut -d';' -f 1,14 data/UnicodeData.txt | sed -e "s|.*;$||g" | sed -e 's/\([0-9A-F]\{5,8\}\)/R\1/g' | sort -u | sed -e "s|R||g" | gawk -F';' '$1 != $2 { print $1, $2 }' > upper_lower_normal.unimap
+
+# Special Casing
+grep -v -e "^#" -e "^$" data/SpecialCasing.txt | sed -e "s|.*;.*;.*;.*;.*;.*||g" | cut -d';' -f 1,4 | sed -e "s|[ \t]||" | sed -e 's/\([0-9A-F]\{5,8\}\)/R\1/g' | sort -u | sed -e "s|R||g" | gawk -F';' '$1 != $2 { print $1, $2 }' > lower_upper_special.unimap
+grep -v -e "^#" -e "^$" data/SpecialCasing.txt | sed -e "s|.*;.*;.*;.*;.*;.*||g" | cut -d';' -f 1,2 | sed -e "s|[ \t]||" | sed -e 's/\([0-9A-F]\{5,8\}\)/R\1/g' | sort -u | sed -e "s|R||g" | gawk -F';' '$1 != $2 { print $1, $2 }' > upper_lower_special.unimap
+
+# Case Foldings
+grep -v -e "^#" -e "^$" data/CaseFolding.txt | grep ' C; ' | cut -d';' -f 1,3 | sed -e "s|[ \t]||" | sed -e 's/\([0-9A-F]\{5,8\}\)/R\1/g' | sort -u | sed -e "s|R||g" | gawk -F';' '$1 != $2 { print $1, $2 }' > casefold_normal.unimap
+grep -v -e "^#" -e "^$" data/CaseFolding.txt | grep ' F; ' | cut -d';' -f 1,3 | sed -e "s|[ \t]||" | sed -e 's/\([0-9A-F]\{5,8\}\)/R\1/g' | sort -u | sed -e "s|R||g" | gawk -F';' '$1 != $2 { print $1, $2 }' > casefold_special.unimap
+
+# Unicode to UTF-8 tables utility
+gcc -Wall -Wextra -pedantic -std=gnu99 unicode-to-utf8.c -o unicode-to-utf8 -lrig
+
+mkdir -p ./tables/
+./unicode-to-utf8 lower_upper_normal.unimap lower_upper_special.unimap "UTF8_LOWER_UPPER" > ./tables/utf8_lower_upper.h
+./unicode-to-utf8 upper_lower_normal.unimap upper_lower_special.unimap "UTF8_UPPER_LOWER" > ./tables/utf8_upper_lower.h
+./unicode-to-utf8 casefold_normal.unimap casefold_special.unimap "UTF8_CASEFOLD" > ./tables/utf8_casefold.h
+
+rm *.unimap unicode-to-utf8
